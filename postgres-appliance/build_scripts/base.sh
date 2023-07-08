@@ -13,7 +13,7 @@ sed -i 's/^#\s*\(deb.*universe\)$/\1/g' /etc/apt/sources.list
 
 apt-get update
 
-BUILD_PACKAGES=(devscripts equivs build-essential fakeroot debhelper git gcc libc6-dev make cmake libevent-dev libbrotli-dev libssl-dev libkrb5-dev)
+BUILD_PACKAGES=(devscripts equivs build-essential fakeroot debhelper git gcc libc6-dev make cmake libevent-dev libbrotli-dev libssl-dev libkrb5-dev pgxnclient)
 if [ "$DEMO" = "true" ]; then
     export DEB_PG_SUPPORTED_VERSIONS="$PGVERSION"
     WITH_PERL=false
@@ -68,6 +68,9 @@ apt-get install -y \
     libbrotli1 \
     python3.10 \
     python3-psycopg2
+    
+# install PostgreSQL implementation of JSON Web Tokens
+git clone https://github.com/michelp/pgjwt.git /pgjwt
 
 # forbid creation of a main cluster when package is installed
 sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf
@@ -180,6 +183,12 @@ for version in $DEB_PG_SUPPORTED_VERSIONS; do
             "${EXTRA_EXTENSIONS[@]}"; do
         make -C "$n" USE_PGXS=1 clean install-strip
     done
+    
+    # Install pgvector
+    cp /pgjwt/*.sql /pgjwt/*.control /usr/share/postgresql/"${version}"/extension/
+    if [ "${version%.*}" -ge 11 ]; then
+        PATH="${PATH}:/usr/lib/postgresql/${version}/bin" pgxn install vector
+    fi
 done
 
 apt-get install -y skytools3-ticker pgbouncer
@@ -320,5 +329,7 @@ rm -rf /var/lib/apt/lists/* \
         /usr/lib/postgresql/*/bin/droplang \
         /usr/lib/postgresql/*/bin/dropuser \
         /usr/lib/postgresql/*/bin/pg_standby \
-        /usr/lib/postgresql/*/bin/pltcl_*
+        /usr/lib/postgresql/*/bin/pltcl_* \
+        /pgjwt \
+        /pgvector
 find /var/log -type f -exec truncate --size 0 {} \;
